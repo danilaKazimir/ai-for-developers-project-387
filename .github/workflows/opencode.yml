@@ -1,0 +1,115 @@
+name: OpenCode
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions: {}
+
+jobs:
+  opencode:
+    if: >-
+      github.repository == 'danilaKazimir/ai-for-developers-project-387' &&
+      !github.event.repository.fork && !github.event.issue.pull_request &&
+      github.event.comment.user.type == 'User' &&
+      !endsWith(github.event.comment.user.login, '[bot]') &&
+      !github.event.comment.performed_via_github_app &&
+      contains(fromJSON('["OWNER", "COLLABORATOR"]'), github.event.comment.author_association) &&
+      (github.event.comment.body == '/opencode' || startsWith(github.event.comment.body, '/opencode ') ||
+       github.event.comment.body == '/oc' || startsWith(github.event.comment.body, '/oc '))
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    concurrency:
+      group: opencode-issues
+      queue: max
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Verify repository write access
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMMENT_AUTHOR: ${{ github.event.comment.user.login }}
+        run: |
+          permission=$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$COMMENT_AUTHOR/permission" --jq .permission)
+          case "$permission" in
+            admin|write) ;;
+            *) echo 'OpenCode requires repository write access.' >&2; exit 1 ;;
+          esac
+
+      - name: Checkout the default-branch commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Set up project tools
+        uses: jdx/mise-action@82a612c5ab8bcda7cc5db6b7e81a8e7584c3dc6e # v5.2.3
+        with:
+          version: 2026.10.25
+
+      - name: Install OpenCode V1
+        run: |
+          archive="$RUNNER_TEMP/opencode-linux-x64-baseline.tar.gz"
+          curl --fail --silent --show-error --location --retry 3 \
+            https://github.com/anomalyco/opencode/releases/download/v1.19.5/opencode-linux-x64-baseline.tar.gz \
+            --output "$archive"
+          printf '%s  %s\n' '17c200fd4b2289954cc01552559f9b6d03ec157b2ddfb5eb54144f491656333d' "$archive" | sha256sum --check
+          install_dir="$RUNNER_TEMP/opencode-bin"
+          mkdir -p "$install_dir"
+          tar -xzf "$archive" -C "$install_dir" opencode
+          "$install_dir/opencode" --version
+          printf '%s\n' "$install_dir" >> "$GITHUB_PATH"
+
+      - name: Verify project skills
+        run: |
+          skills_json="$RUNNER_TEMP/opencode-skills.json"
+          OPENCODE_DISABLE_EXTERNAL_SKILLS=true opencode debug skill > "$skills_json"
+          jq -e --arg directory "$GITHUB_WORKSPACE/.opencode/skills/" '
+            [.[] | select(.location | startswith($directory)) | .name] | sort
+            | . == ["domain-modeling", "grilling", "research", "wayfinder"]
+          ' "$skills_json"
+
+      - name: Configure the Responses API provider
+        env:
+          PROVIDER_BASE_URL: ${{ vars.OPENCODE_BASE_URL }}
+          PROVIDER_MODEL: ${{ vars.OPENCODE_MODEL }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          for name in ("PROVIDER_BASE_URL", "PROVIDER_MODEL"):
+              if not os.environ.get(name):
+                  raise SystemExit("Set OPENCODE_BASE_URL and OPENCODE_MODEL in Actions Variables.")
+
+          model = os.environ["PROVIDER_MODEL"]
+          config = {
+              "small_model": f"openai/{model}",
+              "provider": {
+                  "openai": {
+                      "options": {
+                          "baseURL": "{env:PROVIDER_BASE_URL}",
+                          "apiKey": "{env:PROVIDER_API_KEY}",
+                      },
+                      "models": {model: {"name": model}},
+                  },
+              },
+          }
+          path = Path(os.environ["RUNNER_TEMP"]) / "opencode-provider.json"
+          path.write_text(json.dumps(config), encoding="utf-8")
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env:
+              env.write(f"OPENCODE_CONFIG={path}\n")
+          PY
+
+      - name: Run OpenCode
+        env:
+          MODEL: openai/${{ vars.OPENCODE_MODEL }}
+          MENTIONS: /opencode,/oc
+          PROVIDER_BASE_URL: ${{ vars.OPENCODE_BASE_URL }}
+          PROVIDER_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+        run: |
+          : "${PROVIDER_API_KEY:?Set OPENCODE_API_KEY in Actions Secrets.}"
+          opencode github run

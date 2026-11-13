@@ -14,6 +14,33 @@
 - [Карта решений](https://github.com/danilaKazimir/ai-for-developers-project-386/issues/2)
 - [Архитектурные решения](./docs/adr/)
 
+## OpenCode в GitHub Issues
+
+[Workflow OpenCode](./.github/workflows/opencode.yml) запускается в `main` при
+создании комментария в issue (`issue_comment`, `types: [created]`). Владелец и
+коллабораторы с правом записи могут начать комментарий с `/opencode` или `/oc`,
+добавив запрос через пробел. При вызове одной командой агент резюмирует обсуждение.
+Агент публикует ответ в issue и может открыть PR, если изменил файлы. Ход выполнения
+доступен в Actions. Тайм-аут задания составляет 45 минут. Команды выполняются
+по одной на репозиторий, новые команды ожидают в очереди.
+
+1. Установите [OpenCode Agent](https://github.com/apps/opencode-agent) на этот
+   репозиторий. Workflow получает временный токен приложения через GitHub OIDC.
+2. В **Settings → Secrets and variables → Actions → Variables** задайте
+   `OPENCODE_BASE_URL` (базовый URL совместимого OpenAI Responses API, обычно с
+   `/v1`) и `OPENCODE_MODEL` (ID модели у провайдера). OpenCode использует
+   `openai/<OPENCODE_MODEL>` как основную и вспомогательную модель. Провайдер
+   должен поддерживать вызов инструментов через Responses API и принимать запросы
+   с раннера GitHub.
+3. В **Actions → Secrets** сохраните ключ провайдера как `OPENCODE_API_KEY`.
+4. После слияния workflow в `main` оставьте новый комментарий в issue, например
+   `/opencode Прочитай AGENTS.md и перечисли команды проверок проекта.`
+
+Раннер устанавливает закреплённый OpenCode V1.19.5 и проверяет доступность скиллов
+`wayfinder`, `grilling`, `domain-modeling` и `research` из `.opencode/skills/`.
+Правила из `docs/agents/` подключены через `opencode.json`. Публикация сессий
+отключена в OpenCode V1.19.5. Параметр `share` устарел и игнорируется.
+
 ## Пользовательские сценарии
 
 ### Организатор
