@@ -37,9 +37,12 @@
    `/opencode Прочитай AGENTS.md и перечисли команды проверок проекта.`
 
 Раннер устанавливает закреплённый OpenCode V1.19.5 и проверяет доступность скиллов
-`wayfinder`, `grilling`, `domain-modeling` и `research` из `.opencode/skills/`.
+`wayfinder`, `grilling`, `domain-modeling`, `research` и `triage` из `.opencode/skills/`.
 Правила из `docs/agents/` подключены через `opencode.json`. Публикация сессий
 отключена в OpenCode V1.19.5. Параметр `share` устарел и игнорируется.
+
+Для первичного разбора оставьте в issue новый комментарий:
+`/opencode Используй навык triage. Предложи категорию, метку и следующий шаг. Ответь комментарием в этом issue без изменения файлов и меток.`
 
 ## Пользовательские сценарии
 

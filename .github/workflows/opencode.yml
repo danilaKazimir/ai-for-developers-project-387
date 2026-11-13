@@ -68,7 +68,7 @@ jobs:
           OPENCODE_DISABLE_EXTERNAL_SKILLS=true opencode debug skill > "$skills_json"
           jq -e --arg directory "$GITHUB_WORKSPACE/.opencode/skills/" '
             [.[] | select(.location | startswith($directory)) | .name] | sort
-            | . == ["domain-modeling", "grilling", "research", "wayfinder"]
+            | . == ["domain-modeling", "grilling", "research", "triage", "wayfinder"]
           ' "$skills_json"
 
       - name: Configure the Responses API provider
