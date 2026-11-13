@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useId, useState, type FormEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCreateBooking, useGetEventTypeSlots } from './api/generated/calendar';
 import { ApiHttpError } from './api/http';
@@ -45,6 +45,8 @@ export function SlotCalendar({ eventTypeId }: { eventTypeId: string }) {
   const [email, setEmail] = useState('');
   const [comment, setComment] = useState('');
   const [bookingError, setBookingError] = useState('');
+  const [copyState, setCopyState] = useState<'idle' | 'copying' | 'copied' | 'error'>('idle');
+  const copyDetailsId = useId();
   const queryClient = useQueryClient();
   function refreshAvailability() {
     void queryClient.invalidateQueries({ predicate: (query) => {
@@ -121,6 +123,21 @@ export function SlotCalendar({ eventTypeId }: { eventTypeId: string }) {
 
   const activeDay = data?.days.find((day) => day.date === date) ?? data?.days[0];
   const selected = activeDay?.slots.find((slot) => slot.startsAt === start);
+  const bookingDetails = booking.data ? [
+    booking.data.eventType.name,
+    `${localDate(Date.parse(booking.data.startsAt), booking.data.timezone)} · ${formatTime(booking.data.startsAt, booking.data.timezone)} — ${formatTime(booking.data.endsAt, booking.data.timezone)}`,
+    booking.data.timezone,
+  ].join('\n') : '';
+  async function copyBookingDetails() {
+    setCopyState('copying');
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard API is unavailable');
+      await navigator.clipboard.writeText(bookingDetails);
+      setCopyState('copied');
+    } catch {
+      setCopyState('error');
+    }
+  }
   return (
     <main className="workspace container" id="main-content" tabIndex={-1}>
       {calendar.isPending && <p role="status">Загружаем календарь…</p>}
@@ -144,6 +161,15 @@ export function SlotCalendar({ eventTypeId }: { eventTypeId: string }) {
           <p>{booking.data.eventType.name} · {booking.data.eventType.durationMinutes} минут</p>
           <p>{localDate(Date.parse(booking.data.startsAt), booking.data.timezone)} · {formatTime(booking.data.startsAt, booking.data.timezone)} — {formatTime(booking.data.endsAt, booking.data.timezone)}</p>
           <p>{booking.data.timezone}</p>
+          <button type="button" className="text-link" disabled={copyState === 'copying'} onClick={() => void copyBookingDetails()}>
+            {copyState === 'copying' ? 'Копируем…' : 'Скопировать детали встречи'}
+          </button>
+          <span className="copy-feedback" aria-live="polite">{copyState === 'copied' ? 'Детали встречи скопированы' : ''}</span>
+          {copyState === 'error' && <div>
+            <p role="alert">Не удалось скопировать автоматически. Скопируйте детали встречи вручную</p>
+            <label htmlFor={copyDetailsId}>Детали встречи для копирования</label>
+            <textarea id={copyDetailsId} className="copy-details" readOnly rows={3} value={bookingDetails} onFocus={(event) => event.currentTarget.select()} />
+          </div>}
         </section>}
         {!booking.isSuccess && <>
         {notice && <p role="status">{notice}</p>}
