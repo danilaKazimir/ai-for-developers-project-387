@@ -42,6 +42,46 @@ const fixture = {
   days: dates.map((date) => ({ date, slots: date === '2026-11-05' ? [{ startsAt: '2026-11-05T06:00:00Z', endsAt: '2026-11-05T06:30:00Z' }] : [] })),
 };
 
+test('показывает ближайшее свободное время отдельной информационной строкой', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-11-04T00:00:00Z') });
+  await page.route('**/api/event-types/intro/slots', (route) => route.fulfill({ json: fixture }));
+  await page.goto('/event-types/intro');
+  await expect(page.getByText('Ближайшее свободное время: четверг, 5 ноября, 09:00 GMT+03:00–09:30 GMT+03:00 (Europe/Moscow)')).toBeVisible();
+  await expect(page.getByRole('button', { name: /Ближайшее свободное время/ })).toHaveCount(0);
+});
+
+test('обновляет свободное время при наступлении ближайшего и убирает прошедшее', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-11-05T05:00:00Z') });
+  let refreshed = false;
+  await page.route('**/api/event-types/intro/slots', (route) => {
+    const empty = { ...fixture, days: dates.map((date) => ({ date, slots: [] })) };
+    return route.fulfill({ json: refreshed ? empty : fixture });
+  });
+  await page.goto('/event-types/intro');
+  await expect(page.getByText(/^Ближайшее свободное время:/)).toBeVisible();
+  refreshed = true;
+  await page.clock.fastForward(3_600_000);
+  await expect(page.getByText('В ближайшие 14 дней свободного времени нет. Вернитесь позднее.')).toBeVisible();
+  await expect(page.getByText(/^Ближайшее свободное время:/)).toHaveCount(0);
+});
+
+test('при ошибке фонового обновления скрывает ближайшее время и позволяет повторить запрос', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-11-04T00:00:00Z') });
+  let failed = false;
+  await page.route('**/api/event-types/intro/slots', (route) => route.fulfill(failed
+    ? { status: 503, json: { code: 'DATABASE_UNAVAILABLE', message: 'Временно недоступно' } }
+    : { json: fixture }));
+  await page.goto('/event-types/intro');
+  await expect(page.getByText(/^Ближайшее свободное время:/)).toBeVisible();
+  failed = true;
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+  await expect(page.getByRole('alert')).toContainText('Не удалось обновить свободное время');
+  await expect(page.getByText(/^Ближайшее свободное время:/)).toHaveCount(0);
+  failed = false;
+  await page.getByRole('button', { name: 'Повторить запрос' }).click();
+  await expect(page.getByText(/^Ближайшее свободное время:/)).toBeVisible();
+});
+
 test('пустая дата, возврат на страницу и пустое окно сбрасывают устаревший выбор', async ({ page }) => {
   let empty = false;
   await page.route('**/api/event-types/intro/slots', (route) => route.fulfill({ json: empty ? { ...fixture, days: dates.map((date) => ({ date, slots: [] })) } : fixture }));

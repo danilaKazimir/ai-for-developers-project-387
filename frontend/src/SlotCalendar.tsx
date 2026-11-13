@@ -21,8 +21,19 @@ function millisecondsToNextDate(timezone: string) {
   return high - now;
 }
 
+function millisecondsUntil(instant: string) {
+  return Date.parse(instant) - Date.now();
+}
+
 function formatTime(instant: string, timezone: string) {
   return new Intl.DateTimeFormat('ru-RU', { timeZone: timezone, hour: '2-digit', minute: '2-digit', timeZoneName: 'longOffset' }).format(new Date(instant));
+}
+
+function nearestSlot(days: { date: string; slots: { startsAt: string; endsAt: string }[] }[]) {
+  const now = Date.now();
+  return days.flatMap((day) => day.slots.map((slot) => ({ ...slot, date: day.date })))
+    .filter((slot) => Date.parse(slot.startsAt) > now)
+    .sort((first, second) => Date.parse(first.startsAt) - Date.parse(second.startsAt))[0];
 }
 
 export function SlotCalendar({ eventTypeId }: { eventTypeId: string }) {
@@ -85,35 +96,35 @@ export function SlotCalendar({ eventTypeId }: { eventTypeId: string }) {
   }
   const timezone = data?.timezone;
   const refetch = calendar.refetch;
+  const nextSlot = data ? nearestSlot(data.days) : undefined;
+  const nextSlotStart = nextSlot?.startsAt;
   useEffect(() => {
     const refresh = () => { if (document.visibilityState === 'visible') void refetch(); };
     window.addEventListener('focus', refresh);
     window.addEventListener('pageshow', refresh);
     document.addEventListener('visibilitychange', refresh);
-    let timer: ReturnType<typeof setTimeout>;
-    let active = true;
-    function armTimer() {
-      if (!timezone || !active) return;
-      timer = setTimeout(() => {
-        void refetch().finally(armTimer);
-      }, millisecondsToNextDate(timezone));
-    }
-    armTimer();
+    if (!timezone) return () => {
+      window.removeEventListener('focus', refresh);
+      window.removeEventListener('pageshow', refresh);
+      document.removeEventListener('visibilitychange', refresh);
+    };
+    const delays = [millisecondsToNextDate(timezone)];
+    if (nextSlotStart) delays.push(millisecondsUntil(nextSlotStart));
+    const timer = setTimeout(() => { void refetch(); }, Math.max(1, Math.min(...delays)));
     return () => {
-      active = false;
       clearTimeout(timer);
       window.removeEventListener('focus', refresh);
       window.removeEventListener('pageshow', refresh);
       document.removeEventListener('visibilitychange', refresh);
     };
-  }, [timezone, refetch]);
+  }, [timezone, nextSlotStart, refetch]);
 
   const activeDay = data?.days.find((day) => day.date === date) ?? data?.days[0];
   const selected = activeDay?.slots.find((slot) => slot.startsAt === start);
   return (
     <main className="workspace container" id="main-content" tabIndex={-1}>
       {calendar.isPending && <p role="status">Загружаем календарь…</p>}
-      {calendar.isError && <div role="alert">
+      {calendar.isError && !data && <div role="alert">
         <h1>{calendar.error instanceof ApiHttpError && calendar.error.status === 404 ? 'Событие не найдено' : 'Не удалось загрузить календарь'}</h1>
         <p>Проверьте ссылку или повторите загрузку.</p>
         <button className="button" onClick={() => void refetch()}>Повторить загрузку</button>
@@ -124,6 +135,10 @@ export function SlotCalendar({ eventTypeId }: { eventTypeId: string }) {
         <p className="page-intro">{data.eventType.description}</p>
         <p>{data.eventType.durationMinutes} минут · <span>{data.timezone}</span></p>
         <p>Доступные даты: {data.windowStartDate} — {data.days.at(-1)?.date}</p>
+        {calendar.isError && <div role="alert">
+          <p>Не удалось обновить свободное время. Повторите запрос.</p>
+          <button type="button" className="text-link" onClick={() => void refetch()}>Повторить запрос</button>
+        </div>}
         {booking.isSuccess && <section className="creation-success" role="status" aria-live="polite">
           <h2>Встреча подтверждена</h2>
           <p>{booking.data.eventType.name} · {booking.data.eventType.durationMinutes} минут</p>
@@ -132,7 +147,8 @@ export function SlotCalendar({ eventTypeId }: { eventTypeId: string }) {
         </section>}
         {!booking.isSuccess && <>
         {notice && <p role="status">{notice}</p>}
-        {!data.days.some((day) => day.slots.length > 0) && <p className="empty-state">В ближайшие 14 дней свободного времени нет. Вернитесь позднее.</p>}
+        {!calendar.isError && nextSlot && <p className="nearest-slot">Ближайшее свободное время: {new Intl.DateTimeFormat('ru-RU', { timeZone: 'UTC', weekday: 'long', day: 'numeric', month: 'long' }).format(new Date(`${nextSlot.date}T12:00:00Z`))}, {formatTime(nextSlot.startsAt, data.timezone)}–{formatTime(nextSlot.endsAt, data.timezone)} ({data.timezone})</p>}
+        {!calendar.isError && !data.days.some((day) => day.slots.length > 0) && <p className="empty-state">В ближайшие 14 дней свободного времени нет. Вернитесь позднее.</p>}
         <div className="date-list" role="group" aria-label="Даты записи">
           {data.days.map((day) => <button className="date-choice" key={day.date} aria-label={day.date} disabled={booking.isPending} aria-pressed={day.date === activeDay?.date} onClick={() => { setDate(day.date); setStart(null); setNotice(''); }}>
             <span>{new Intl.DateTimeFormat('ru-RU', { timeZone: 'UTC', day: 'numeric', month: 'short', weekday: 'short' }).format(new Date(`${day.date}T12:00:00Z`))}</span>
