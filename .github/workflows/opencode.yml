@@ -26,6 +26,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
+      issues: write
     steps:
       - name: Verify repository write access
         env:
@@ -106,6 +107,7 @@ jobs:
 
       - name: Run OpenCode
         env:
+          GH_TOKEN: ${{ github.token }}
           MODEL: openai/${{ vars.OPENCODE_MODEL }}
           MENTIONS: /opencode,/oc
           PROVIDER_BASE_URL: ${{ vars.OPENCODE_BASE_URL }}
