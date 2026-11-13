@@ -1,0 +1,99 @@
+min_version = "2026.10.25"
+
+[tools]
+python = "3.13.18"
+node = "24.22.2"
+uv = "0.13.6"
+
+[env]
+_.file = { path = ".env", optional = true }
+UV_PYTHON = "3.13.18"
+UV_PYTHON_DOWNLOADS = "never"
+
+[tasks.setup]
+description = "Install the locked Python and npm dependencies"
+run = ['uv sync --python "$(mise which python)" --frozen', "npm ci", "mise run test:e2e:install", "mise run hooks:install"]
+
+[tasks."hooks:install"]
+description = "Enable the repository Git hooks for this checkout"
+run = "git config --local core.hooksPath .githooks"
+
+[tasks.lint]
+description = "Check Python and JS/TS lint and Python formatting without changing files"
+run = [
+  "uv run --frozen ruff check .",
+  "uv run --frozen ruff format --check .",
+  "npm run lint",
+]
+
+[tasks.generate]
+description = "Generate OpenAPI, the Fetch/Query SDK and Pydantic models"
+run = "node scripts/generate.mjs"
+
+[tasks."generate:check"]
+description = "Regenerate in a temporary directory and compare all outputs"
+run = "node scripts/generate.mjs --check"
+
+[tasks."db:up"]
+description = "Start PostgreSQL and wait for readiness"
+run = "docker compose up -d --wait db"
+
+[tasks."db:down"]
+description = "Stop PostgreSQL, preserving its volume"
+run = "docker compose down"
+
+[tasks.migrate]
+description = "Apply database migrations"
+run = "uv run --frozen alembic upgrade head"
+
+[tasks."dev:api"]
+description = "Start the FastAPI development server"
+run = "uv run --frozen uvicorn backend.app.main:create_app --factory --reload --reload-dir backend --host 127.0.0.1 --port 8000"
+
+[tasks."dev:web"]
+description = "Start the Vite development server"
+run = "npm run dev"
+
+[tasks.dev]
+description = "Start the frontend and API; stop both with Ctrl-C"
+run = "npm run dev:all"
+
+[tasks."test:unit"]
+description = "Run tests without PostgreSQL"
+run = ["uv run --frozen pytest -m 'not integration'", "npm test"]
+
+[tasks."test:integration"]
+description = "Test migrations and API against TEST_DATABASE_URL"
+run = "uv run --frozen pytest -m integration"
+
+[tasks."test:e2e:install"]
+description = "Install the Chromium version pinned by Playwright and its OS dependencies"
+run = "npm exec -- playwright install --with-deps chromium"
+
+[tasks."test:e2e"]
+description = "Test the frontend in Chromium without the API or PostgreSQL"
+run = "npm run test:e2e"
+
+[tasks."test:e2e:full"]
+description = "Test creation, catalog and booking with real API and PostgreSQL"
+run = "npm run test:e2e:full"
+
+[tasks."test:smoke"]
+description = "Check real API and Vite startup against TEST_DATABASE_URL"
+run = "node scripts/smoke.mjs"
+
+[tasks.check]
+description = "Check formatting, lint, types, tests, build, generated files and startup (requires test PostgreSQL)"
+run = [
+  "mise run lint",
+  "uv run --frozen mypy",
+  "npm run typecheck",
+  "uv run --frozen pytest",
+  "npm test",
+  "npm run build",
+  "node scripts/generate.mjs --check",
+  "mise run test:e2e",
+  "mise run test:e2e:full",
+  "node scripts/smoke.mjs",
+]
+

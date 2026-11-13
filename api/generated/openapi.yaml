@@ -1,0 +1,569 @@
+openapi: 3.1.0
+info:
+  title: Call Calendar API
+  version: 0.1.0
+tags: []
+paths:
+  /api/bookings:
+    post:
+      operationId: createBooking
+      parameters: []
+      responses:
+        '201':
+          description: The request has succeeded and a new resource has been created as a result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingConfirmation'
+        '404':
+          description: The server cannot find the requested resource.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: string
+                    enum:
+                      - EVENT_TYPE_NOT_FOUND
+                  message:
+                    type: string
+                required:
+                  - code
+                  - message
+                unevaluatedProperties:
+                  not: {}
+        '409':
+          description: The request conflicts with the current state of the server.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: string
+                    enum:
+                      - TIME_CONFLICT
+                  message:
+                    type: string
+                required:
+                  - code
+                  - message
+                unevaluatedProperties:
+                  not: {}
+        '422':
+          description: Client error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: string
+                    enum:
+                      - VALIDATION_ERROR
+                      - SLOT_NOT_BOOKABLE
+                  message:
+                    type: string
+                required:
+                  - code
+                  - message
+                unevaluatedProperties:
+                  not: {}
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: string
+                    enum:
+                      - INTERNAL_ERROR
+                  message:
+                    type: string
+                required:
+                  - code
+                  - message
+                unevaluatedProperties:
+                  not: {}
+        '503':
+          description: Service unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateBookingRequest'
+  /api/event-types:
+    get:
+      operationId: listEventTypes
+      parameters: []
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventTypeCatalog'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: string
+                    enum:
+                      - INTERNAL_ERROR
+                  message:
+                    type: string
+                required:
+                  - code
+                  - message
+                unevaluatedProperties:
+                  not: {}
+        '503':
+          description: Service unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+  /api/event-types/{eventTypeId}/slots:
+    get:
+      operationId: getEventTypeSlots
+      parameters:
+        - name: eventTypeId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 64
+            pattern: ^[a-z0-9]+(-[a-z0-9]+)*$
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventTypeSlots'
+        '404':
+          description: The server cannot find the requested resource.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: string
+                    enum:
+                      - EVENT_TYPE_NOT_FOUND
+                  message:
+                    type: string
+                required:
+                  - code
+                  - message
+                unevaluatedProperties:
+                  not: {}
+        '422':
+          description: Client error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: string
+                    enum:
+                      - VALIDATION_ERROR
+                  message:
+                    type: string
+                required:
+                  - code
+                  - message
+                unevaluatedProperties:
+                  not: {}
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: string
+                    enum:
+                      - INTERNAL_ERROR
+                  message:
+                    type: string
+                required:
+                  - code
+                  - message
+                unevaluatedProperties:
+                  not: {}
+        '503':
+          description: Service unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+  /api/health:
+    get:
+      operationId: getHealth
+      description: Check that the API can execute a query against PostgreSQL.
+      parameters: []
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+        '503':
+          description: Service unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+  /api/organizer/bookings:
+    get:
+      operationId: listOrganizerBookings
+      description: All bookings starting at or after now, ordered by start then UUID, without a window limit.
+      parameters: []
+      responses:
+        '200':
+          description: The request has succeeded.
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                enum:
+                  - private, no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizerBookings'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: string
+                    enum:
+                      - INTERNAL_ERROR
+                  message:
+                    type: string
+                required:
+                  - code
+                  - message
+                unevaluatedProperties:
+                  not: {}
+        '503':
+          description: Service unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+  /api/organizer/event-types:
+    post:
+      operationId: createEventType
+      parameters: []
+      responses:
+        '201':
+          description: The request has succeeded and a new resource has been created as a result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventType'
+        '422':
+          description: Client error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: string
+                    enum:
+                      - VALIDATION_ERROR
+                  message:
+                    type: string
+                required:
+                  - code
+                  - message
+                unevaluatedProperties:
+                  not: {}
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: string
+                    enum:
+                      - INTERNAL_ERROR
+                  message:
+                    type: string
+                required:
+                  - code
+                  - message
+                unevaluatedProperties:
+                  not: {}
+        '503':
+          description: Service unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateEventTypeRequest'
+components:
+  schemas:
+    ApiError:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          enum:
+            - DATABASE_UNAVAILABLE
+        message:
+          type: string
+      unevaluatedProperties:
+        not: {}
+      description: A public error without database connection details.
+    BookingConfirmation:
+      type: object
+      required:
+        - id
+        - eventType
+        - startsAt
+        - endsAt
+        - timezone
+      properties:
+        id:
+          type: string
+          format: uuid
+        eventType:
+          $ref: '#/components/schemas/EventType'
+        startsAt:
+          type: string
+          format: date-time
+        endsAt:
+          type: string
+          format: date-time
+        timezone:
+          type: string
+      description: Confirmation contains only the newly created booking, never guest contacts.
+    BookingGuest:
+      type: object
+      required:
+        - name
+        - email
+      properties:
+        name:
+          type: string
+          pattern: ^\s*\S(?:[\s\S]{0,118}\S)?\s*$
+        email:
+          type: string
+          maxLength: 254
+          format: email
+        comment:
+          type: string
+          maxLength: 2000
+      unevaluatedProperties:
+        not: {}
+    CreateBookingRequest:
+      type: object
+      required:
+        - eventTypeId
+        - startsAt
+        - guest
+      properties:
+        eventTypeId:
+          type: string
+          minLength: 1
+          maxLength: 64
+          pattern: ^[a-z0-9]+(-[a-z0-9]+)*$
+        startsAt:
+          type: string
+          format: date-time
+        guest:
+          $ref: '#/components/schemas/BookingGuest'
+      unevaluatedProperties:
+        not: {}
+    CreateEventTypeRequest:
+      type: object
+      required:
+        - name
+        - description
+        - durationMinutes
+      properties:
+        name:
+          type: string
+          pattern: ^\s*\S(?:[\s\S]{0,118}\S)?\s*$
+        description:
+          type: string
+          maxLength: 2000
+        durationMinutes:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 540
+      unevaluatedProperties:
+        not: {}
+      description: Input name must have 1–120 characters after trimming surrounding whitespace.
+    EventType:
+      type: object
+      required:
+        - id
+        - name
+        - description
+        - durationMinutes
+      properties:
+        id:
+          type: string
+          minLength: 1
+          maxLength: 64
+          pattern: ^[a-z0-9]+(-[a-z0-9]+)*$
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+          description: Leading and trailing whitespace is removed before length validation.
+        description:
+          type: string
+          maxLength: 2000
+        durationMinutes:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 540
+      unevaluatedProperties:
+        not: {}
+      description: Meeting format shared by the organizer's single calendar.
+    EventTypeCatalog:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/EventType'
+      unevaluatedProperties:
+        not: {}
+    EventTypeSlots:
+      type: object
+      required:
+        - eventType
+        - timezone
+        - windowStartDate
+        - windowEndDateExclusive
+        - days
+      properties:
+        eventType:
+          $ref: '#/components/schemas/EventType'
+        timezone:
+          type: string
+        windowStartDate:
+          type: string
+          format: date
+        windowEndDateExclusive:
+          type: string
+          format: date
+        days:
+          type: array
+          items:
+            $ref: '#/components/schemas/SlotDay'
+      unevaluatedProperties:
+        not: {}
+    HealthStatus:
+      type: object
+      required:
+        - status
+        - database
+      properties:
+        status:
+          type: string
+          enum:
+            - ok
+        database:
+          type: string
+          enum:
+            - ok
+      unevaluatedProperties:
+        not: {}
+      description: The API and its PostgreSQL connection are ready.
+    OrganizerBooking:
+      type: object
+      required:
+        - guest
+      properties:
+        guest:
+          $ref: '#/components/schemas/BookingGuest'
+      unevaluatedProperties:
+        not: {}
+      allOf:
+        - $ref: '#/components/schemas/BookingConfirmation'
+      description: Upcoming bookings with guest contacts, available in the public demo.
+    OrganizerBookings:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrganizerBooking'
+      unevaluatedProperties:
+        not: {}
+    Slot:
+      type: object
+      required:
+        - startsAt
+        - endsAt
+      properties:
+        startsAt:
+          type: string
+          format: date-time
+        endsAt:
+          type: string
+          format: date-time
+      unevaluatedProperties:
+        not: {}
+      description: A real interval, normalized to UTC in responses.
+    SlotDay:
+      type: object
+      required:
+        - date
+        - slots
+      properties:
+        date:
+          type: string
+          format: date
+        slots:
+          type: array
+          items:
+            $ref: '#/components/schemas/Slot'
+      unevaluatedProperties:
+        not: {}

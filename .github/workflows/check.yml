@@ -1,0 +1,57 @@
+name: Application checks
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: postgresql+psycopg://calendar:calendar@127.0.0.1:5432/calendar
+      TEST_DATABASE_URL: postgresql+psycopg://calendar:calendar@127.0.0.1:5432/calendar_test
+    steps:
+      - uses: actions/checkout@v7
+      - uses: jdx/mise-action@v3
+        with:
+          version: 2026.10.25
+      - run: mise run setup
+      - run: mise run db:up
+      - name: Create the dedicated test database
+        run: docker compose exec -T db createdb -U calendar calendar_test
+      - run: mise run migrate
+      - run: mise run check
+      - name: Build standalone Docker image
+        run: docker build -t call-calendar:test .
+      - name: Start standalone Docker image
+        run: docker run -d --name calendar-acceptance --memory=512m -e PORT=18080 -p 18080:18080 call-calendar:test
+      - name: Wait for Docker API
+        run: |
+          for attempt in $(seq 1 60); do
+            if curl -fsS http://localhost:18080/api/health; then exit 0; fi
+            sleep 1
+          done
+          docker logs calendar-acceptance
+          exit 1
+      - name: Check the fresh Docker catalog and free times
+        run: |
+          event_id=d0c5f4b98ee747c8b777a63314ef0475
+          curl -fsS http://localhost:18080/api/event-types | jq -e --arg id "$event_id" '
+            .items | select(length == 1) | .[0]
+            | .id == $id and .name == "Знакомство" and .durationMinutes == 30
+          '
+          curl -fsS "http://localhost:18080/api/event-types/$event_id/slots" \
+            | jq -e 'any(.days[]; .slots | length > 0)'
+      - name: Test Docker booking scenarios
+        run: DEPLOYMENT_URL=http://localhost:18080 mise exec -- npm exec -- playwright test --config playwright.deployment.config.ts
+      - name: PostgreSQL logs
+        if: failure()
+        run: docker compose logs db
+      - name: Stop PostgreSQL
+        if: always()
+        run: mise run db:down
+

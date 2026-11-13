@@ -1,0 +1,3 @@
+[mcp_servers.render]
+url = "https://mcp.render.com/mcp"
+# Alternative to OAuth: bearer_token_env_var = "RENDER_API_KEY"
