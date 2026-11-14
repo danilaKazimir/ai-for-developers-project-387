@@ -37,7 +37,7 @@
    `/opencode Прочитай AGENTS.md и перечисли команды проверок проекта.`
 
 Раннер устанавливает закреплённый OpenCode V1.19.5 и проверяет доступность скиллов
-`wayfinder`, `grilling`, `domain-modeling`, `research` и `triage` из `.opencode/skills/`.
+`wayfinder`, `grilling`, `domain-modeling`, `implement-spec`, `research` и `triage` из `.opencode/skills/`.
 Правила из `docs/agents/` подключены через `opencode.json`. Публикация сессий
 отключена в OpenCode V1.19.5. Параметр `share` устарел и игнорируется.
 
@@ -70,6 +70,46 @@ OpenCode разбирает заголовок и описание с отклю
 
 Для проверки создавайте issues через GitHub или пользовательский `gh`. Открытие issue
 токеном `GITHUB_TOKEN` из другого workflow не запускает автотриаж.
+
+## Ревью и команды OpenCode в PR
+
+[Независимое ревью](./.github/workflows/opencode-pr-review.yml) запускается при
+открытии, переоткрытии, обновлении и переводе PR из черновика в готовый к ревью.
+PR должен идти из ветки этого репозитория в `main`. Задание модели выполняется
+до 10 минут с отключёнными инструментами. Оно читает diff и [критерии](./REVIEW.md)
+из базового коммита. Новый запуск отменяет предыдущий для того же PR. Публикация
+работает отдельно с `pull-requests: write` и оставляет GitHub Review на проверенном SHA.
+
+[Команды PR](./.github/workflows/opencode-pr-command.yml) принимают `/opencode` и
+`/oc` в новом общем комментарии или комментарии к строке diff. Право записи автора
+проверяется через GitHub. Команды выполняются последовательно на PR. OpenCode App
+обновляет ветку PR через OIDC и пишет итог в Conversation. Для обоих workflow
+используются переменные и секрет провайдера из предыдущего раздела. Запуски с
+секретами рассчитаны на ветки доверенных участников внутри репозитория.
+
+До обращения к модели workflow резервирует один из **5 запусков ревью** или
+**3 запусков команд** на весь PR. Счётчики ведутся в служебной ветке
+`automation/opencode-budget/<номер>` и сохраняются при обновлении head.
+Отмена или ошибка после резервирования расходует запуск. Чтобы повторить ревью
+после ошибки, перезапускайте весь workflow для нового резервирования. При
+исчерпании лимита в сводке Actions появится `budget exhausted`, а модель будет
+пропущена. Служебная ветка хранит расход, её удаление сбрасывает бюджет.
+
+Для реализации оставьте в исходном issue команду `/opencode Используй implement-spec`,
+укажите согласованную спецификацию и тикеты. Агент добавит приёмочные проверки
+и заполнит [шаблон PR](./.github/pull_request_template.md). Перед мержем сверяйте
+риск, откат, результаты CI и ревью для текущего head.
+
+В `Application checks` задание `browser` собирает head PR и проверяет его через
+Playwright. Скачайте артефакт по ссылке в сводке и распакуйте его. Откройте отчёт
+командой `mise exec -- npm exec -- playwright show-report <каталог>`.
+Сравните `head_sha` в `provenance.json` с
+`gh pr view <номер> --json headRefOid --jq .headRefOid`.
+
+Для Release Please требуется разрешение репозитория **Settings → Actions →
+General → Allow GitHub Actions to create and approve pull requests**. После
+squash merge с сообщением в формате Conventional Commits найдите релизный PR
+в [запусках Release Please](https://github.com/danilaKazimir/ai-for-developers-project-387/actions/workflows/release-please.yml).
 
 ## Пользовательские сценарии
 

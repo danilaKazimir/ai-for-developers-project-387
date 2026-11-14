@@ -1,0 +1,64 @@
+name: OpenCode PR command
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+
+permissions: {}
+
+jobs:
+  command:
+    if: >-
+      github.repository == 'danilaKazimir/ai-for-developers-project-387' &&
+      (github.event.issue.pull_request || github.event.pull_request) &&
+      github.event.comment.user.type == 'User' &&
+      !github.event.comment.performed_via_github_app &&
+      contains(fromJSON('["OWNER", "COLLABORATOR"]'), github.event.comment.author_association) &&
+      (github.event.comment.body == '/opencode' || startsWith(github.event.comment.body, '/opencode ') ||
+       github.event.comment.body == '/oc' || startsWith(github.event.comment.body, '/oc '))
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    concurrency:
+      group: opencode-pr-commands-${{ github.event.issue.number || github.event.pull_request.number }}
+      queue: max
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      id-token: write
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/heads/main
+          persist-credentials: false
+      - name: Reserve a command launch
+        id: budget
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/opencode-pr.py command
+      - name: Set up project tools
+        if: steps.budget.outputs.admitted == 'true'
+        uses: jdx/mise-action@82a612c5ab8bcda7cc5db6b7e81a8e7584c3dc6e # v5.2.3
+        with:
+          version: 2026.10.25
+      - name: Install OpenCode V1
+        if: steps.budget.outputs.admitted == 'true'
+        run: bash scripts/install-opencode.sh
+      - name: Configure the Responses API provider
+        if: steps.budget.outputs.admitted == 'true'
+        env:
+          PROVIDER_BASE_URL: ${{ vars.OPENCODE_BASE_URL }}
+          PROVIDER_MODEL: ${{ vars.OPENCODE_MODEL }}
+        run: python3 scripts/configure-opencode.py
+      - name: Run OpenCode
+        if: steps.budget.outputs.admitted == 'true'
+        env:
+          MODEL: openai/${{ vars.OPENCODE_MODEL }}
+          MENTIONS: /opencode,/oc
+          PROVIDER_BASE_URL: ${{ vars.OPENCODE_BASE_URL }}
+          PROVIDER_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+        run: |
+          : "${PROVIDER_API_KEY:?Set OPENCODE_API_KEY in Actions Secrets.}"
+          opencode github run
