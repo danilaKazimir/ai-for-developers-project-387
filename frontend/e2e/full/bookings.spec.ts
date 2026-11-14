@@ -129,6 +129,31 @@ for (const conflict of [false, true]) {
   });
 }
 
+test('выбранное время показывает пояс календаря при отличающемся поясе браузера', async ({ page, request }) => {
+  const createdType = await request.post('/api/organizer/event-types', {
+    data: { name: `Проверка выбранного времени ${Date.now()}`, description: '', durationMinutes: 30 },
+  });
+  expect(createdType.status()).toBe(201);
+  const id = (await createdType.json()).id as string;
+  const calendar = await (await request.get(`/api/event-types/${id}/slots`)).json() as Calendar;
+  const slot = calendar.days.flatMap((day) => day.slots.map((item) => ({ ...item, date: day.date })))
+    .find((item) => formatDate(item.startsAt, 'America/Los_Angeles') !== item.date)!;
+  const browserTimezone = await page.evaluate(() => Intl.DateTimeFormat().resolvedOptions().timeZone);
+  expect(browserTimezone).toBe('America/Los_Angeles');
+  expect(calendar.timezone).not.toBe(browserTimezone);
+  expect(formatDate(slot.startsAt, browserTimezone)).not.toBe(slot.date);
+
+  await page.goto(`/event-types/${id}`);
+  await page.getByRole('button', { name: slot.date, exact: true }).click();
+  await page.getByRole('group', { name: 'Свободное время' })
+    .getByRole('button', { name: formatTime(slot.startsAt, calendar.timezone), exact: true }).click();
+
+  const selection = page.getByRole('status').filter({ has: page.getByRole('heading', { name: 'Выбрано время' }) });
+  await expect(selection).toContainText(
+    `${slot.date} · ${formatTime(slot.startsAt, calendar.timezone)} — ${formatTime(slot.endsAt, calendar.timezone)} (${calendar.timezone})`,
+  );
+});
+
 test('гость копирует три строки деталей встречи по клавиатуре в timezone календаря', async ({ page, request }) => {
   const eventName = `Встреча copy-${Date.now()}`;
   const meeting = await bookFirstSlot(page, request, eventName, true);
