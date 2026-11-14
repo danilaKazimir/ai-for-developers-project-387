@@ -136,8 +136,9 @@ test('выбранное время показывает пояс календа
   expect(createdType.status()).toBe(201);
   const id = (await createdType.json()).id as string;
   const calendar = await (await request.get(`/api/event-types/${id}/slots`)).json() as Calendar;
-  const slot = calendar.days.flatMap((day) => day.slots.map((item) => ({ ...item, date: day.date })))
-    .find((item) => formatDate(item.startsAt, 'America/Los_Angeles') !== item.date)!;
+  const candidates = calendar.days.flatMap((day) => day.slots.map((item) => ({ ...item, date: day.date })));
+  const slot = candidates.find((item) => formatDate(item.startsAt, 'America/Los_Angeles') !== item.date)!;
+  const nextSlot = candidates.find((item) => item.date !== slot.date)!;
   const browserTimezone = await page.evaluate(() => Intl.DateTimeFormat().resolvedOptions().timeZone);
   expect(browserTimezone).toBe('America/Los_Angeles');
   expect(calendar.timezone).not.toBe(browserTimezone);
@@ -151,6 +152,14 @@ test('выбранное время показывает пояс календа
   const selection = page.getByRole('status').filter({ has: page.getByRole('heading', { name: 'Выбрано время' }) });
   await expect(selection).toContainText(
     `${slot.date} · ${formatTime(slot.startsAt, calendar.timezone)} — ${formatTime(slot.endsAt, calendar.timezone)} (${calendar.timezone})`,
+  );
+
+  await page.getByRole('button', { name: nextSlot.date, exact: true }).click();
+  await expect(selection).toHaveCount(0);
+  await page.getByRole('group', { name: 'Свободное время' })
+    .getByRole('button', { name: formatTime(nextSlot.startsAt, calendar.timezone), exact: true }).click();
+  await expect(selection).toContainText(
+    `${nextSlot.date} · ${formatTime(nextSlot.startsAt, calendar.timezone)} — ${formatTime(nextSlot.endsAt, calendar.timezone)} (${calendar.timezone})`,
   );
 });
 
