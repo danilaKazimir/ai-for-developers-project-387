@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.0](https://github.com/danilaKazimir/ai-for-developers-project-387/compare/v0.1.0...v0.2.0) (2026-11-14)
+
+
+### Features
+
+* **booking:** показать часовой пояс при выборе времени ([fc4f0fc](https://github.com/danilaKazimir/ai-for-developers-project-387/commit/fc4f0fc14a57e2d632f46b0f023f39b6fe85eaa9)), closes [#21](https://github.com/danilaKazimir/ai-for-developers-project-387/issues/21) [#23](https://github.com/danilaKazimir/ai-for-developers-project-387/issues/23)
+
+
+### Bug Fixes
+
+* **opencode:** исправить проверку архива автотриажа ([efa1f52](https://github.com/danilaKazimir/ai-for-developers-project-387/commit/efa1f52dc5359e2ac66c0df9febfd081b2951fbe)), closes [#13](https://github.com/danilaKazimir/ai-for-developers-project-387/issues/13)
+
 ## 0.1.0 (2026-11-09)
 
 
