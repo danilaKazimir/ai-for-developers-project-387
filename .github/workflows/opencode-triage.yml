@@ -1,0 +1,104 @@
+name: OpenCode Issue Triage
+
+on:
+  issues:
+    types: [opened]
+
+permissions: {}
+
+concurrency:
+  group: opencode-triage-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  classify:
+    if: github.repository == 'danilaKazimir/ai-for-developers-project-387' && !github.event.repository.fork
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      result: ${{ steps.classify.outputs.result }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Filter new issues
+        id: filter
+        run: python3 scripts/opencode-triage.py prepare --prompt "$RUNNER_TEMP/triage-prompt.txt"
+
+      - name: Install OpenCode V1
+        if: steps.filter.outputs.eligible == 'true'
+        run: |
+          archive="$RUNNER_TEMP/opencode-linux-x64-baseline.tar.gz"
+          curl --fail --silent --show-error --location --retry 3 \
+            https://github.com/anomalyco/opencode/releases/download/v1.19.5/opencode-linux-x64-baseline.tar.gz \
+            --output "$archive"
+          printf '%s\n' '17c200fd4b2289954cc01552559f9b6d03ec157b2ddfb5eb54144f491656333d' "$archive" | sha256sum --check
+          tar -xzf "$archive" -C "$RUNNER_TEMP" opencode
+          "$RUNNER_TEMP/opencode" --version
+
+      - name: Classify the issue
+        id: classify
+        if: steps.filter.outputs.eligible == 'true'
+        env:
+          PROVIDER_BASE_URL: ${{ vars.OPENCODE_BASE_URL }}
+          PROVIDER_MODEL: ${{ vars.OPENCODE_MODEL }}
+          PROVIDER_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          OPENCODE_DISABLE_EXTERNAL_SKILLS: 'true'
+          OPENCODE_DISABLE_PROJECT_CONFIG: 'true'
+        shell: bash
+        run: |
+          : "${PROVIDER_BASE_URL:?Set OPENCODE_BASE_URL in Actions Variables.}"
+          : "${PROVIDER_MODEL:?Set OPENCODE_MODEL in Actions Variables.}"
+          : "${PROVIDER_API_KEY:?Set OPENCODE_API_KEY in Actions Secrets.}"
+
+          cd "$(mktemp -d "$RUNNER_TEMP/opencode-triage.XXXXXX")"
+          export OPENCODE_CONFIG="$PWD/opencode.json"
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          model = os.environ["PROVIDER_MODEL"]
+          config = {
+              "permission": {"*": "deny"},
+              "provider": {
+                  "openai": {
+                      "options": {
+                          "baseURL": "{env:PROVIDER_BASE_URL}",
+                          "apiKey": "{env:PROVIDER_API_KEY}",
+                      },
+                      "models": {model: {"name": model}},
+                  },
+              },
+              "small_model": f"openai/{model}",
+          }
+          Path(os.environ["OPENCODE_CONFIG"]).write_text(json.dumps(config), encoding="utf-8")
+          PY
+
+          result=$("$RUNNER_TEMP/opencode" --pure run --format json --model "openai/$PROVIDER_MODEL" \
+            < "$RUNNER_TEMP/triage-prompt.txt" | python3 "$GITHUB_WORKSPACE/scripts/opencode-triage.py" parse)
+          printf 'result=%s\n' "$result" >> "$GITHUB_OUTPUT"
+
+  publish:
+    needs: classify
+    if: needs.classify.outputs.result != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Publish the triage comment and label
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TRIAGE_RESULT: ${{ needs.classify.outputs.result }}
+        run: python3 scripts/opencode-triage.py publish
