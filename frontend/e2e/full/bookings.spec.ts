@@ -130,6 +130,7 @@ for (const conflict of [false, true]) {
 }
 
 test('выбранное время показывает пояс календаря при отличающемся поясе браузера', async ({ page, request }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
   const createdType = await request.post('/api/organizer/event-types', {
     data: { name: `Проверка выбранного времени ${Date.now()}`, description: '', durationMinutes: 30 },
   });
@@ -161,6 +162,7 @@ test('выбранное время показывает пояс календа
   await expect(selection).toContainText(
     `${nextSlot.date} · ${formatTime(nextSlot.startsAt, calendar.timezone)} — ${formatTime(nextSlot.endsAt, calendar.timezone)} (${calendar.timezone})`,
   );
+  expect(await selection.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
 });
 
 test('гость копирует три строки деталей встречи по клавиатуре в timezone календаря', async ({ page, request }) => {

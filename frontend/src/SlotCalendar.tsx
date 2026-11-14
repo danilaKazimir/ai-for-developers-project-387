@@ -187,7 +187,7 @@ export function SlotCalendar({ eventTypeId }: { eventTypeId: string }) {
         </div>}
         {selected && <section className="selection-summary" role="status" aria-live="polite">
           <h2>Выбрано время</h2>
-          <p>{activeDay?.date} · {formatTime(selected.startsAt, data.timezone)} — {formatTime(selected.endsAt, data.timezone)} ({data.timezone})</p>
+          <p>{activeDay?.date} · {formatTime(selected.startsAt, data.timezone)} — {formatTime(selected.endsAt, data.timezone)} <span className="selection-timezone">({data.timezone})</span></p>
           <p>{data.eventType.durationMinutes} минут</p>
         </section>}
         <form className="event-form" onSubmit={submit}>
