@@ -145,3 +145,25 @@ test('повторённые локальные часы различаются 
   await expect(second).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByRole('status')).toContainText('GMT-12:00');
 });
+
+test('длинный пояс переносится без горизонтальной прокрутки на узком экране', async ({ page }) => {
+  const timezone = 'America/Argentina/ComodRivadavia';
+  const date = '2026-11-05';
+  const slot = { startsAt: '2026-11-05T12:00:00Z', endsAt: '2026-11-05T12:30:00Z' };
+  await page.setViewportSize({ width: 320, height: 844 });
+  await page.clock.install({ time: new Date('2026-11-04T00:00:00Z') });
+  await page.route('**/api/event-types/intro/slots', (route) => route.fulfill({ json: {
+    ...fixture,
+    timezone,
+    days: dates.map((day) => ({ date: day, slots: day === date ? [slot] : [] })),
+  } }));
+  await page.goto('/event-types/intro');
+  await page.getByRole('button', { name: date, exact: true }).click();
+  await page.getByRole('group', { name: 'Свободное время' }).getByRole('button').click();
+
+  const selection = page.locator('.selection-summary');
+  await expect(selection).toContainText(`(${timezone})`);
+  expect(await selection.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  expect(await selection.locator('.selection-timezone').evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});

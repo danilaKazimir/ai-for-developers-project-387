@@ -257,6 +257,7 @@ button:disabled { opacity: .65; cursor: wait; }
 .date-choice[aria-pressed="true"], .slot-choice[aria-pressed="true"] { border-color: #237d5a; background: #eaf6ee; box-shadow: 0 0 0 1px #237d5a; }
 .selection-summary { background: #eaf6ee; border-radius: 18px; padding: 24px; margin-top: 24px; }
 .selection-summary h2 { margin-top: 0; }
+.selection-timezone { display: inline-block; white-space: normal; overflow-wrap: anywhere; }
 
 .meeting-list { display: grid; gap: 1rem; margin-block: 1.5rem; }
 .meeting-list .event-card { min-width: 0; overflow-wrap: anywhere; }
