@@ -25,6 +25,34 @@ jobs:
         run: docker compose exec -T db createdb -U calendar calendar_test
       - run: mise run migrate
       - run: mise run check
+      - name: PostgreSQL logs
+        if: failure()
+        run: docker compose logs db
+      - name: Stop PostgreSQL
+        if: always()
+        run: mise run db:down
+
+
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Verify the build SHA
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          tested_sha=$(git rev-parse HEAD)
+          test "$tested_sha" = "$EXPECTED_SHA"
+          echo "TESTED_SHA=$tested_sha" >> "$GITHUB_ENV"
+      - uses: jdx/mise-action@v3
+        with:
+          version: 2026.10.25
+      - run: npm ci
+      - run: mise run test:e2e:install
       - name: Build standalone Docker image
         run: docker build -t call-calendar:test .
       - name: Start standalone Docker image
@@ -47,11 +75,28 @@ jobs:
           curl -fsS "http://localhost:18080/api/event-types/$event_id/slots" \
             | jq -e 'any(.days[]; .slots | length > 0)'
       - name: Test Docker booking scenarios
+        env:
+          PLAYWRIGHT_HTML_OPEN: never
+          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report
         run: DEPLOYMENT_URL=http://localhost:18080 mise exec -- npm exec -- playwright test --config playwright.deployment.config.ts
-      - name: PostgreSQL logs
-        if: failure()
-        run: docker compose logs db
-      - name: Stop PostgreSQL
-        if: always()
-        run: mise run db:down
-
+      - name: Record browser report provenance
+        if: always() && github.event_name == 'pull_request' && hashFiles('playwright-report/index.html') != ''
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          jq -n --argjson pr "$PR_NUMBER" --arg sha "$TESTED_SHA" --arg run "$run_url" \
+            '{pr: $pr, head_sha: $sha, run_url: $run}' > playwright-report/provenance.json
+      - name: Upload browser report
+        id: browser-report
+        if: always() && hashFiles('playwright-report/provenance.json') != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: playwright-pr-${{ github.event.pull_request.number }}-${{ env.TESTED_SHA }}-${{ github.run_attempt }}
+          path: playwright-report/
+          if-no-files-found: error
+      - name: Link browser report
+        if: always() && steps.browser-report.outputs.artifact-url != ''
+        env:
+          ARTIFACT_URL: ${{ steps.browser-report.outputs.artifact-url }}
+        run: echo "[Playwright report for $TESTED_SHA]($ARTIFACT_URL)" >> "$GITHUB_STEP_SUMMARY"

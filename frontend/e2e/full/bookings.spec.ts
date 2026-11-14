@@ -119,6 +119,12 @@ for (const conflict of [false, true]) {
     await expect(page.locator('a[href]:not([href="#main-content"])')).toHaveCount(0);
     await expect(page.getByRole('status')).toContainText(eventName);
     await expect(page.getByRole('status')).toContainText('Europe/Moscow');
+    if (!conflict && process.env.DEPLOYMENT_URL) {
+      await test.info().attach('Подтверждение встречи', {
+        body: await page.getByRole('status').screenshot(),
+        contentType: 'image/png',
+      });
+    }
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   });
 }

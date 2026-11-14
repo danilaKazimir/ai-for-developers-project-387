@@ -5,5 +5,6 @@ export default defineConfig({
   testDir: './frontend/e2e/full',
   testMatch: 'bookings.spec.ts',
   workers: 1,
+  reporter: process.env.CI ? [['list'], ['html']] : 'list',
   use: { baseURL: process.env.DEPLOYMENT_URL, browserName: 'chromium' },
 });
