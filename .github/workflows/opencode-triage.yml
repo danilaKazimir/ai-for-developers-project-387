@@ -36,7 +36,7 @@ jobs:
           curl --fail --silent --show-error --location --retry 3 \
             https://github.com/anomalyco/opencode/releases/download/v1.19.5/opencode-linux-x64-baseline.tar.gz \
             --output "$archive"
-          printf '%s\n' '17c200fd4b2289954cc01552559f9b6d03ec157b2ddfb5eb54144f491656333d' "$archive" | sha256sum --check
+          printf '%s  %s\n' '17c200fd4b2289954cc01552559f9b6d03ec157b2ddfb5eb54144f491656333d' "$archive" | sha256sum --check
           tar -xzf "$archive" -C "$RUNNER_TEMP" opencode
           "$RUNNER_TEMP/opencode" --version
 
