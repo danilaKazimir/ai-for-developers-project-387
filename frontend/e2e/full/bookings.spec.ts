@@ -1,8 +1,53 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 import { copyGuestLink } from './guest-links';
 import type { OrganizerBookings } from '../../src/api/generated/models';
 
 test.use({ timezoneId: 'America/Los_Angeles' });
+
+type Calendar = { timezone: string; days: { date: string; slots: { startsAt: string; endsAt: string }[] }[] };
+type Meeting = { eventName: string; date: string; startsAt: string; endsAt: string };
+
+function formatTime(instant: string, timezone: string) {
+  return new Intl.DateTimeFormat('ru-RU', {
+    timeZone: timezone, hour: '2-digit', minute: '2-digit', timeZoneName: 'longOffset',
+  }).format(new Date(instant));
+}
+
+function formatDate(instant: string, timezone: string) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date(instant));
+}
+
+async function bookFirstSlot(page: Page, request: APIRequestContext, eventName: string, preferDifferentBrowserDate = false): Promise<Meeting> {
+  const createdType = await request.post('/api/organizer/event-types', {
+    data: { name: eventName, description: 'Описание не должно копироваться', durationMinutes: 30 },
+  });
+  expect(createdType.status()).toBe(201);
+  const id = (await createdType.json()).id as string;
+  const calendar = await (await request.get(`/api/event-types/${id}/slots`)).json() as Calendar;
+  const candidates = calendar.days.flatMap((day) => day.slots.map((slot) => ({ ...slot, date: day.date })));
+  const slot = (preferDifferentBrowserDate
+    ? candidates.find((candidate) => formatDate(candidate.startsAt, 'America/Los_Angeles') !== candidate.date)
+    : candidates[0])!;
+  const day = calendar.days.find((entry) => entry.date === slot.date)!;
+
+  await page.goto(`/event-types/${id}`);
+  await page.getByRole('button', { name: day.date, exact: true }).click();
+  await page.getByRole('group', { name: 'Свободное время' }).getByRole('button', { name: formatTime(slot.startsAt, calendar.timezone), exact: true }).click();
+  await page.getByLabel('Ваше имя').fill('Гость для проверки');
+  await page.getByLabel('Email').fill('copy-details@example.com');
+  await page.getByLabel('Комментарий').fill('Комментарий не должен копироваться');
+  await page.getByRole('button', { name: 'Подтвердить запись' }).click();
+  await expect(page.getByRole('heading', { name: 'Встреча подтверждена' })).toBeVisible();
+  return { eventName, date: day.date, startsAt: slot.startsAt, endsAt: slot.endsAt };
+}
+
+function expectedDetails(meeting: Meeting) {
+  const localDate = formatDate(meeting.startsAt, 'Europe/Moscow');
+  expect(localDate).toBe(meeting.date);
+  return [meeting.eventName, `${localDate} · ${formatTime(meeting.startsAt, 'Europe/Moscow')} — ${formatTime(meeting.endsAt, 'Europe/Moscow')}`, 'Europe/Moscow'].join('\n');
+}
 
 test('имя гостя из 120 символов сохраняется целиком после удаления крайних пробелов', async ({ page, request }) => {
   const eventName = `padded-name-${Date.now()}`;
@@ -75,5 +120,52 @@ for (const conflict of [false, true]) {
     await expect(page.getByRole('status')).toContainText(eventName);
     await expect(page.getByRole('status')).toContainText('Europe/Moscow');
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  });
+}
+
+test('гость копирует три строки деталей встречи по клавиатуре в timezone календаря', async ({ page, request }) => {
+  const eventName = `Встреча copy-${Date.now()}`;
+  const meeting = await bookFirstSlot(page, request, eventName, true);
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: new URL(page.url()).origin });
+
+  const browserTimezone = await page.evaluate(() => Intl.DateTimeFormat().resolvedOptions().timeZone);
+  expect(browserTimezone).toBe('America/Los_Angeles');
+  const browserLocalDate = await page.evaluate(({ instant, timezone }) => new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date(instant)), { instant: meeting.startsAt, timezone: browserTimezone });
+  expect(browserLocalDate).not.toBe(meeting.date);
+
+  const copyButton = page.getByRole('button', { name: 'Скопировать детали встречи', exact: true });
+  await copyButton.focus();
+  await expect(copyButton).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page.getByText('Детали встречи скопированы', { exact: true })).toBeVisible();
+  const copied = await page.evaluate(() => navigator.clipboard.readText());
+  expect(copied).toBe(expectedDetails(meeting));
+  expect(copied.split('\n')).toHaveLength(3);
+  expect(copied).not.toContain('Гость для проверки');
+  expect(copied).not.toContain('copy-details@example.com');
+  expect(copied).not.toContain('Комментарий не должен копироваться');
+});
+
+for (const unavailable of [false, true]) {
+  test(`ручное копирование деталей встречи: ${unavailable ? 'Clipboard API отсутствует' : 'доступ отклонён'}`, async ({ page, request }) => {
+    await page.addInitScript((missing) => {
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: missing ? undefined : { writeText: () => Promise.reject(new Error('Denied')) },
+      });
+    }, unavailable);
+
+    const meeting = await bookFirstSlot(page, request, `Встреча copy-fallback-${Date.now()}`);
+    await page.getByRole('button', { name: 'Скопировать детали встречи', exact: true }).click();
+    await expect(page.getByRole('alert')).toHaveText('Не удалось скопировать автоматически. Скопируйте детали встречи вручную');
+    await expect(page.getByText('Детали встречи скопированы', { exact: true })).toHaveCount(0);
+
+    const manualCopy = page.getByLabel('Детали встречи для копирования', { exact: true });
+    await expect(manualCopy).toHaveValue(expectedDetails(meeting));
+    await manualCopy.focus();
+    expect(await manualCopy.evaluate((element: HTMLTextAreaElement) => element.selectionEnd - element.selectionStart))
+      .toBe((await manualCopy.inputValue()).length);
   });
 }
