@@ -1,6 +1,6 @@
 [project]
 name = "call-calendar"
-version = "0.1.0"
+version = "0.2.0"
 description = "Call calendar API scaffold"
 requires-python = ">=3.13"
 dependencies = [
