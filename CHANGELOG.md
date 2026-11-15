@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.0](https://github.com/danilaKazimir/ai-for-developers-project-387/compare/v0.2.0...v0.3.0) (2026-11-15)
+
+
+### Features
+
+* **opencode:** расширить мониторинг сценариев календаря ([5089a22](https://github.com/danilaKazimir/ai-for-developers-project-387/commit/5089a2290c5aae8d04ea29b3de26b4a29c170bb3)), closes [#25](https://github.com/danilaKazimir/ai-for-developers-project-387/issues/25)
+
+
+### Bug Fixes
+
+* **opencode:** явно заблокировать инструменты мониторинга ([69a0715](https://github.com/danilaKazimir/ai-for-developers-project-387/commit/69a07155d50848b76f9b2db2c5c70aa41af84807)), closes [#25](https://github.com/danilaKazimir/ai-for-developers-project-387/issues/25)
+
 ## [0.2.0](https://github.com/danilaKazimir/ai-for-developers-project-387/compare/v0.1.0...v0.2.0) (2026-11-14)
 
 
