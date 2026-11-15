@@ -71,6 +71,40 @@ OpenCode разбирает заголовок и описание с отклю
 Для проверки создавайте issues через GitHub или пользовательский `gh`. Открытие issue
 токеном `GITHUB_TOKEN` из другого workflow не запускает автотриаж.
 
+## Мониторинг приложения через OpenCode
+
+[OpenCode Monitor](./.github/workflows/opencode-monitor.yml) работает в `main`
+каждый день в 02:17 UTC (09:17 по Хошимину, cron `17 2 * * *`). В **Settings →
+Secrets and variables → Actions → Variables** задайте `APP_URL` со значением
+`https://call-calendar-danilakazimir.onrender.com`. Мониторинг использует те же
+настройки провайдера OpenCode, что и workflow для GitHub Issues.
+
+Для ручной проверки откройте **Actions → OpenCode Monitor → Run workflow**,
+выберите `main` и оставьте `report_run_id` пустым. Чтобы повторить анализ на тех
+же данных, укажите ID успешного прогона этого workflow из `main`. Отчёт
+загружается из его артефакта без повторного запроса к приложению. Те же два вида
+запуска доступны через `gh workflow run opencode-monitor.yml --ref main` и
+`gh workflow run opencode-monitor.yml --ref main -f report_run_id=43717271782`.
+
+В **Artifacts → monitor-report** хранятся `report.json` и `agent-output.md` в
+течение 30 дней. На странице прогона в **Summary** доступны SHA-256 отчёта, итог
+проверки и ссылка на issue, если оно создано или найдено. Проверочные прогоны
+выполнены через `gh workflow run`.
+
+- [Первый прогон](https://github.com/danilaKazimir/ai-for-developers-project-387/actions/runs/43717271782)
+  подтвердил `404 application/json` на `/status` при здоровом `/api/health`.
+  По находке создано [issue #28](https://github.com/danilaKazimir/ai-for-developers-project-387/issues/28).
+- [Повторный прогон](https://github.com/danilaKazimir/ai-for-developers-project-387/actions/runs/43717419003)
+  взял отчёт первого прогона и нашёл то же issue. Файлы отчёта совпали побайтово.
+
+### Выводы
+
+В поручении агенту я уточнил, что тикет о мониторинге может описывать находку
+как пример и совпадением считается задача об исправлении самой страницы.
+Право записи в GitHub Issues выдал только заданию публикации и добавил
+проверку точного маркера находки. Повтор одного отчёта подтвердил, что агент
+ссылается на исходную задачу и в трекере остаётся одна запись.
+
 ## Ревью и команды OpenCode в PR
 
 [Независимое ревью](./.github/workflows/opencode-pr-review.yml) запускается при
