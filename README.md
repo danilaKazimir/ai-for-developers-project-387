@@ -97,7 +97,7 @@ Secrets and variables → Actions → Variables** задайте `APP_URL` со 
 же данных, укажите ID успешного прогона этого workflow из `main`. Отчёт
 загружается из его артефакта без повторного запроса к приложению. Те же два вида
 запуска доступны через `gh workflow run opencode-monitor.yml --ref main` и
-`gh workflow run opencode-monitor.yml --ref main -f report_run_id=43717271782`.
+`gh workflow run opencode-monitor.yml --ref main -f report_run_id=43719809090`.
 
 В **Artifacts → monitor-report** хранятся `report.json` и `agent-output.md` в
 течение 30 дней. При исследовательском проходе там же сохраняется
@@ -110,6 +110,14 @@ Secrets and variables → Actions → Variables** задайте `APP_URL` со 
   По находке создано [issue #28](https://github.com/danilaKazimir/ai-for-developers-project-387/issues/28).
 - [Повторный прогон](https://github.com/danilaKazimir/ai-for-developers-project-387/actions/runs/43717419003)
   взял отчёт первого прогона и нашёл то же issue. Файлы отчёта совпали побайтово.
+
+После расширения [полный прогон](https://github.com/danilaKazimir/ai-for-developers-project-387/actions/runs/43719809090)
+выполнил 121 тест на отдельной БД и шесть проверок демо. OpenCode записал
+шесть действий в Chromium. Подтверждённым отклонением остался
+[дефект /status](https://github.com/danilaKazimir/ai-for-developers-project-387/issues/28).
+[Повтор расширенного отчёта](https://github.com/danilaKazimir/ai-for-developers-project-387/actions/runs/43720113051)
+использовал побайтово тот же `report.json` и нашёл #28. В трекере сохранилась
+одна задача по этой находке. Результаты и шаги агента доступны в артефактах прогона.
 
 ### Выводы
 
