@@ -21,7 +21,7 @@ jobs:
   analyze:
     if: github.repository == 'danilaKazimir/ai-for-developers-project-387' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
     permissions:
       contents: read
       issues: read
@@ -35,6 +35,86 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Set up project tools
+        id: tools
+        if: inputs.report_run_id == ''
+        continue-on-error: true
+        uses: jdx/mise-action@82a612c5ab8bcda7cc5db6b7e81a8e7584c3dc6e # v5.2.3
+        with:
+          version: 2026.10.25
+
+      - name: Install Chromium and test dependencies
+        id: browser
+        if: steps.tools.outcome == 'success'
+        continue-on-error: true
+        run: |
+          mkdir -p "$RUNNER_TEMP/monitor-input"
+          npm ci
+          mise run test:e2e:install
+
+      - name: Check public demo in Chromium
+        if: steps.browser.outcome == 'success'
+        timeout-minutes: 5
+        continue-on-error: true
+        run: node scripts/monitor-browser.mjs live "$RUNNER_TEMP/monitor-input"
+
+      - name: Run API and browser tests with separate PostgreSQL
+        if: steps.browser.outcome == 'success'
+        timeout-minutes: 8
+        continue-on-error: true
+        env:
+          DATABASE_URL: postgresql+psycopg://calendar:calendar@127.0.0.1:5432/calendar
+          TEST_DATABASE_URL: postgresql+psycopg://calendar:calendar@127.0.0.1:5432/calendar_test
+        shell: bash
+        run: |
+          uv sync --frozen
+          mise run db:up
+          trap 'mise run db:down' EXIT
+          docker compose exec -T db createdb -U calendar calendar_test
+          output="$RUNNER_TEMP/monitor-input"
+          if ! uv run --frozen pytest backend/tests --junitxml="$output/api-first.xml"; then
+            uv run --frozen pytest backend/tests --junitxml="$output/api-repeat.xml" || true
+          fi
+          if ! npm run --silent test:e2e:full -- --reporter=json > "$output/browser-first.json"; then
+            npm run --silent test:e2e:full -- --reporter=json > "$output/browser-repeat.json" || true
+          fi
+
+      - name: Install OpenCode
+        id: install-opencode
+        continue-on-error: true
+        run: bash scripts/install-opencode.sh
+
+      - name: Configure the Responses API provider
+        id: configure-opencode
+        if: steps.install-opencode.outcome == 'success'
+        continue-on-error: true
+        env:
+          PROVIDER_BASE_URL: ${{ vars.OPENCODE_BASE_URL }}
+          PROVIDER_MODEL: ${{ vars.OPENCODE_MODEL }}
+        run: python3 scripts/configure-opencode.py --read-only
+
+      - name: Build a disposable application image
+        id: image
+        if: steps.browser.outcome == 'success' && steps.configure-opencode.outcome == 'success'
+        timeout-minutes: 6
+        continue-on-error: true
+        run: docker build -t calendar-monitor:test .
+
+      - name: Explore the disposable application with OpenCode
+        if: steps.image.outcome == 'success'
+        timeout-minutes: 8
+        continue-on-error: true
+        env:
+          MONITOR_CONTAINER_IMAGE: calendar-monitor:test
+          MONITOR_TEST_URL: http://127.0.0.1:18080
+          PROVIDER_BASE_URL: ${{ vars.OPENCODE_BASE_URL }}
+          PROVIDER_MODEL: ${{ vars.OPENCODE_MODEL }}
+          PROVIDER_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          OPENCODE_DISABLE_PROJECT_CONFIG: 'true'
+          OPENCODE_DISABLE_EXTERNAL_SKILLS: 'true'
+          OPENCODE_PERMISSION: '{"*":"deny"}'
+        run: node scripts/monitor-browser.mjs explore "$RUNNER_TEMP/monitor-input"
+
       - name: Collect report and look up issues
         id: prepare
         env:
@@ -42,20 +122,9 @@ jobs:
           REPORT_RUN_ID: ${{ inputs.report_run_id }}
         run: python3 scripts/opencode-monitor.py prepare "$RUNNER_TEMP/monitor-report"
 
-      - name: Install OpenCode
-        if: steps.prepare.outputs.confirmed == 'true'
-        run: bash scripts/install-opencode.sh
-
-      - name: Configure the Responses API provider
-        if: steps.prepare.outputs.confirmed == 'true'
-        env:
-          PROVIDER_BASE_URL: ${{ vars.OPENCODE_BASE_URL }}
-          PROVIDER_MODEL: ${{ vars.OPENCODE_MODEL }}
-        run: python3 scripts/configure-opencode.py --read-only
-
-      - name: Analyze the finding with OpenCode
+      - name: Analyze confirmed findings with OpenCode
         id: analyze
-        if: steps.prepare.outputs.confirmed == 'true'
+        if: steps.prepare.outputs.confirmed == 'true' && steps.configure-opencode.outcome == 'success'
         shell: bash
         env:
           PROVIDER_BASE_URL: ${{ vars.OPENCODE_BASE_URL }}
