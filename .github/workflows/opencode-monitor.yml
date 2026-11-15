@@ -1,0 +1,105 @@
+name: OpenCode Monitor
+
+on:
+  schedule:
+    - cron: '17 2 * * *'
+  workflow_dispatch:
+    inputs:
+      report_run_id:
+        description: 'ID предыдущего прогона с сохранённым отчётом. Пусто для проверки приложения.'
+        required: false
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: opencode-monitor
+  queue: max
+  cancel-in-progress: false
+
+jobs:
+  analyze:
+    if: github.repository == 'danilaKazimir/ai-for-developers-project-387' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: read
+      actions: read
+    outputs:
+      publish: ${{ steps.analyze.outcome == 'success' }}
+    env:
+      APP_URL: ${{ vars.APP_URL }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Collect report and look up issues
+        id: prepare
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPORT_RUN_ID: ${{ inputs.report_run_id }}
+        run: python3 scripts/opencode-monitor.py prepare "$RUNNER_TEMP/monitor-report"
+
+      - name: Install OpenCode
+        if: steps.prepare.outputs.confirmed == 'true'
+        run: bash scripts/install-opencode.sh
+
+      - name: Configure the Responses API provider
+        if: steps.prepare.outputs.confirmed == 'true'
+        env:
+          PROVIDER_BASE_URL: ${{ vars.OPENCODE_BASE_URL }}
+          PROVIDER_MODEL: ${{ vars.OPENCODE_MODEL }}
+        run: python3 scripts/configure-opencode.py --read-only
+
+      - name: Analyze the finding with OpenCode
+        id: analyze
+        if: steps.prepare.outputs.confirmed == 'true'
+        shell: bash
+        env:
+          PROVIDER_BASE_URL: ${{ vars.OPENCODE_BASE_URL }}
+          PROVIDER_MODEL: ${{ vars.OPENCODE_MODEL }}
+          PROVIDER_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          OPENCODE_DISABLE_PROJECT_CONFIG: 'true'
+          OPENCODE_DISABLE_EXTERNAL_SKILLS: 'true'
+        run: |
+          : "${PROVIDER_API_KEY:?Set OPENCODE_API_KEY in Actions Secrets.}"
+          cd "$(mktemp -d "$RUNNER_TEMP/opencode-monitor.XXXXXX")"
+          opencode --pure run --format json --model "openai/$PROVIDER_MODEL" \
+            < "$RUNNER_TEMP/monitor-prompt.txt" | \
+            python3 "$GITHUB_WORKSPACE/scripts/opencode-monitor.py" decode "$RUNNER_TEMP/monitor-report"
+
+      - name: Save report and agent output
+        if: '!cancelled()'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: monitor-report
+          path: ${{ runner.temp }}/monitor-report
+          retention-days: 30
+          if-no-files-found: error
+          overwrite: true
+
+  publish:
+    needs: analyze
+    if: needs.analyze.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: monitor-report
+          path: ${{ runner.temp }}/monitor-report
+
+      - name: Publish or link the existing issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APP_URL: ${{ vars.APP_URL }}
+        run: python3 scripts/opencode-monitor.py publish "$RUNNER_TEMP/monitor-report"
