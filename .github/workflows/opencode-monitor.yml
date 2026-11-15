@@ -63,6 +63,7 @@ jobs:
           PROVIDER_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
           OPENCODE_DISABLE_PROJECT_CONFIG: 'true'
           OPENCODE_DISABLE_EXTERNAL_SKILLS: 'true'
+          OPENCODE_PERMISSION: '{"*":"deny"}'
         run: |
           : "${PROVIDER_API_KEY:?Set OPENCODE_API_KEY in Actions Secrets.}"
           cd "$(mktemp -d "$RUNNER_TEMP/opencode-monitor.XXXXXX")"

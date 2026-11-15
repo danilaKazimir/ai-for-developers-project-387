@@ -225,6 +225,12 @@ def publish(directory):
     if not confirmed(report):
         raise ValueError("An issue requires a confirmed report.")
     result = json.loads(decision_path.read_bytes())
+    if result["decision"] == "new":
+        if (
+            json.loads(gh("repo", "view", repo(), "--json", "nameWithOwner"))["nameWithOwner"]
+            != repo()
+        ):
+            raise ValueError("The target repository could not be verified.")
     current = issues()
     match = next((issue for issue in current if MARKER in (issue["body"] or "").splitlines()), None)
     if match is None and result["decision"] == "existing":
@@ -232,11 +238,6 @@ def publish(directory):
     if match is not None:
         summary(f"Найдена существующая задача [#{match['number']}]({match['html_url']}).")
     elif result["decision"] == "new":
-        if (
-            json.loads(gh("repo", "view", repo(), "--json", "nameWithOwner"))["nameWithOwner"]
-            != repo()
-        ):
-            raise ValueError("The target repository could not be verified.")
         page = report["status_page"]
         run_url = f"https://github.com/{repo()}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
         body = directory / "issue.md"
